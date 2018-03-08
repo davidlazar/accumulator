@@ -29,6 +29,7 @@ func HashToPrime(data []byte) *big.Int {
 }
 
 // PrivateKey is the private key for an RSA accumulator.
+// It is not needed for typical uses of an accumulator.
 type PrivateKey struct {
 	P, Q    *big.Int
 	N       *big.Int // N = P*Q
@@ -43,6 +44,9 @@ var base = big.NewInt(65537)
 var bigOne = big.NewInt(1)
 var bigTwo = big.NewInt(2)
 
+// GenerateKey generates an RSA accumulator keypair. The private key
+// is mostly used for debugging and should usually be destroyed
+// as part of a trusted setup phase.
 func GenerateKey(random io.Reader) (*PublicKey, *PrivateKey, error) {
 	for {
 		p, err := rand.Prime(random, 1024)
@@ -96,6 +100,36 @@ func (key *PrivateKey) Accumulate(items ...[]byte) (acc *big.Int, witnesses []*b
 			inv.Mul(exp, inv)
 			inv.Mod(inv, key.Totient)
 			witnesses[i] = new(big.Int).Exp(base, inv, key.N)
+		}
+	})
+
+	return
+}
+
+func (key *PublicKey) Accumulate(items ...[]byte) (acc *big.Int, witnesses []*big.Int) {
+	primes := make([]*big.Int, len(items))
+	concurrency.ParallelFor(len(items), func(p *concurrency.P) {
+		for i, ok := p.Next(); ok; i, ok = p.Next() {
+			primes[i] = HashToPrime(items[i])
+		}
+	})
+
+	acc = new(big.Int).Set(base)
+	for i := range primes {
+		acc.Exp(acc, primes[i], key.N)
+	}
+
+	witnesses = make([]*big.Int, len(items))
+	concurrency.ParallelFor(len(items), func(p *concurrency.P) {
+		for i, ok := p.Next(); ok; i, ok = p.Next() {
+			// TODO reuse computations
+			wit := new(big.Int).Set(base)
+			for j := range primes {
+				if j != i {
+					wit.Exp(wit, primes[j], key.N)
+				}
+			}
+			witnesses[i] = wit
 		}
 	})
 

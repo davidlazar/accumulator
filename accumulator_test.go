@@ -16,7 +16,16 @@ func TestAccumulator(t *testing.T) {
 	}
 
 	items := makeItems(100)
-	acc, witnesses := privateKey.Accumulate(items...)
+	acc, witnesses := publicKey.Accumulate(items...)
+	accPriv, witnessesPriv := privateKey.Accumulate(items...)
+	if acc.Cmp(accPriv) != 0 {
+		t.Fatalf("public/private accumulators differ: %s != %s", acc, accPriv)
+	}
+	for i := range witnesses {
+		if witnesses[i].Cmp(witnessesPriv[i]) != 0 {
+			t.Fatalf("witness %d: public/private witnesses differ: %s != %s", i, witnesses[i], witnessesPriv[i])
+		}
+	}
 
 	badItem := make([]byte, 32)
 	rand.Read(badItem)
